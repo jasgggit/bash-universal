@@ -1,39 +1,38 @@
-# JGomes Bash Universal v1.3.0
+# Bash Universal v1.4.0 — Bash + Fastfetch
 
-Configuração de Bash interativo para Debian, Ubuntu e Rocky Linux: prompt Kali de duas linhas, root vermelho, utilizadores normais verde-claro, hostname ciano, diretórios ciano, aliases `ls`, `ll`, `la`, `l`, e histórico com mínimos de 50 000/100 000 comandos.
+## Sistemas
+- Linux: Ubuntu 20.04/22.04/24.04, Debian e Rocky Linux 9; executar como root.
+- macOS: **apenas contas cuja shell de login seja Bash** (`dscl`/`SHELL`). Executar **sem sudo**. Se for Zsh, o instalador não modifica nada.
+- O instalador não altera Zsh, PAM, SSH, systemd-getty, autologin ou configurações de Fastfetch existentes.
 
 ## Instalação
+Rever primeiro o código e testar num servidor não crítico:
 
-Como root, após rever o código publicado:
+```bash
+curl -fsSL https://raw.githubusercontent.com/jasgggit/bash-universal/main/install.sh -o /tmp/bash-universal.sh
+bash -n /tmp/bash-universal.sh
+# Linux: sudo bash /tmp/bash-universal.sh
+# macOS Bash: bash /tmp/bash-universal.sh
+```
+
+Após publicação no GitHub, o comando de uma linha continua disponível:
 
 ```bash
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/jasgggit/bash-universal/main/install.sh)"
 ```
 
-Para testar antes da instalação, descarregar e inspecionar `install.sh`, executar `bash -n install.sh` e depois `sudo bash install.sh`.
+## Bash
+- Prompt Kali de duas linhas: root vermelho, outros utilizadores verde-claro, hostname ciano, moldura azul/lilás.
+- Histórico: mínimos 50 000/100 000, `histappend`, `history -a`; não apaga históricos.
+- Aliases `ls`, `ll`, `la`, `l`; GNU `--color=auto` no Linux e BSD `-G` no macOS.
+- Linux: configuração em `/etc/profile.d/99-jgomes-bash.sh`, com hooks geridos em `.bashrc` existentes e `/etc/skel`.
+- macOS: configuração no `~/.config/jgomes-bash/config.sh`, hooks em `~/.bashrc` e `~/.bash_profile` da conta atual.
 
-## Como funciona
-
-- Configuração em `/etc/profile.d/99-jgomes-bash.sh`.
-- Integração no `/etc/bash.bashrc` (Debian/Ubuntu) ou `/etc/bashrc` (Rocky), e no final dos `.bashrc` de utilizadores Bash existentes e de `/etc/skel/.bashrc` para novas contas.
-- Os `.bashrc` dos utilizadores continuam a ser executados; a configuração gerida é aplicada no fim.
-- Reinstalações não duplicam blocos identificados pelos marcadores `JGOMES BASH MANAGED`.
-- Faz backups dos `.bashrc` alterados e dos `.bash_history` existentes em `/var/lib/jgomes-bash/backup-*` (sem modificar os históricos originais).
-- Não reduz limites superiores já existentes na sessão, nem apaga ou reescreve históricos.
-
-## Validação
-
-Abrir **nova sessão SSH** e executar:
-
-```bash
-echo "$HISTSIZE $HISTFILESIZE"
-shopt histappend
-declare -p PROMPT_COMMAND
-alias ll
-ll /opt
-```
-
-Testar também `su - utilizador` ou `sudo -i` quando aplicável.
+## Fastfetch
+- Linux: preserva instalações existentes; tenta instalar com `apt`/`dnf` **apenas se o pacote existir nos repositórios já configurados**. Se não estiver disponível, mostra um MOTD mínimo. Não adiciona repositórios nem descarrega binários arbitrários.
+- Linux com `/etc/update-motd.d`: cria apenas `05-jgomes-fastfetch`; a apresentação depende do PAM/MOTD da distribuição. Rocky pode não executar scripts deste diretório; não é forçada integração PAM.
+- macOS Bash: se faltar Fastfetch e existir Homebrew, tenta `brew install fastfetch`. Mostra-o em sessões de login Bash interativas, uma vez por árvore de sessão. Se não existir Homebrew, mantém o Bash configurado sem Fastfetch.
+- O instalador não ativa autologin de root nos LXCs. As secções de autologin do documento de origem são deliberadamente excluídas.
 
 ## Estado e remoção
 
@@ -42,13 +41,12 @@ bash install.sh --status
 bash install.sh --uninstall
 ```
 
-A remoção retira apenas os blocos geridos e o ficheiro central; não restaura outras personalizações preexistentes e não altera históricos.
+A remoção retira os hooks geridos e a configuração Bash/MOTD gerida. **Não desinstala Fastfetch**, não elimina históricos e mantém os backups. No macOS, não modifica Zsh.
 
-## Limitações e cuidados
-
-- Só Bash interativo, não Zsh nem macOS.
-- Utilizadores existentes sem `.bashrc` ou com inicialização especial podem exigir ajuste manual.
-- O Bash não garante execução de um hook global *depois* de todos os ficheiros pessoais sem acrescentar um hook ao `.bashrc` individual.
-- Instalações antigas personalizadas, como o AISYS, podem ter `/etc/profile.d/99-shell-custom.sh` e linhas anteriores em `/etc/bash.bashrc`; o instalador **avisa mas não apaga** essas alterações. Rever e consolidar separadamente depois do teste.
-- Sessões abertas podem manter limites antigos e truncar o histórico ao sair; efetuar migração em janela controlada.
-- Executar scripts remotos via `curl | bash` implica confiar no conteúdo atual do branch. Para ambientes críticos, fixar uma tag/commit e rever o script.
+## Limitações e precauções
+- macOS utiliza Bash 3.2 de sistema, que exige tratamento diferente do Bash 5.x Linux.
+- A deteção de Bash no macOS verifica a shell de login da conta; iniciar `bash` manualmente a partir de uma conta Zsh não autoriza mudanças persistentes.
+- O fallback Fastfetch no Linux é intencionalmente conservador: sistemas sem pacote nos repositórios não recebem um binário externo. A instalação por releases oficiais, com verificação de arquitetura, dependências e checksums, pode ser acrescentada numa versão posterior.
+- Antes de instalar em servidores com histórico extenso, encerrar sessões antigas com cuidado; uma sessão antiga com limites baixos pode truncar o histórico quando termina.
+- No Linux, scripts preexistentes de MOTD podem apresentar informação adicional ou duplicada; o instalador não os elimina automaticamente.
+- **Estado:** sintaxe verificada; testes funcionais reais em macOS, Ubuntu, Debian e Rocky ainda pendentes.

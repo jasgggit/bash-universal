@@ -4,7 +4,7 @@
 set -Eeuo pipefail
 umask 077
 
-VERSION='1.3.0'
+VERSION='1.4.0'
 CONFIG='/etc/profile.d/99-jgomes-bash.sh'
 STATE='/var/lib/jgomes-bash'
 GLOBAL_RC=''
@@ -16,10 +16,120 @@ ACTION="${1:---install}"
 
 say() { printf '%s\n' "$*"; }
 fail() { say "ERRO: $*" >&2; exit 1; }
-[[ ${EUID} -eq 0 ]] || fail 'Executar como root (sudo).'
+OS=$(uname -s)
+if [[ $OS == Darwin ]]; then
+  mac_install() {
+    local account home shell rc profile config backup stamp
+    account=$(id -un)
+    home=$HOME
+    shell=$(dscl . -read "/Users/$account" UserShell 2>/dev/null | awk '/UserShell:/ {print $2}')
+    [[ -n $shell ]] || shell=${SHELL:-}
+    if [[ $shell != */bash ]]; then
+      say "macOS: shell de login de $account é ${shell:-desconhecida}; Zsh e outros shells não serão alterados."
+      return 0
+    fi
+    [[ $EUID -ne 0 ]] || fail 'No macOS executar sem sudo, como utilizador Bash.'
+    config="$home/.config/jgomes-bash/config.sh"
+    rc="$home/.bashrc"
+    profile="$home/.bash_profile"
+    backup="$home/.local/state/jgomes-bash/backup-$(date +%Y%m%d-%H%M%S)-$$"
+    case "$ACTION" in
+      --status)
+        say "macOS Bash: $shell"; [[ -f $config ]] && say "Configuração: $config" || say 'Configuração: ausente'
+        return 0 ;;
+      --uninstall)
+        mac_remove_hook "$rc"; mac_remove_hook "$profile"
+        rm -f "$config"
+        say 'Hooks e configuração gerida removidos. Histórico intacto.'; return 0 ;;
+      --install) ;;
+      *) fail 'Uso: bash install.sh [--install|--uninstall|--status]' ;;
+    esac
+    mkdir -p "$backup" "$(dirname "$config")"
+    for f in "$rc" "$profile" "$config"; do
+      if [[ -f $f && ! -L $f ]]; then cp -p "$f" "$backup/$(basename "$f")"; fi
+    done
+    # macOS defaults to BSD ls, and system Bash is 3.2: separate compatible config.
+    cat > "$config" <<'MACCONFIG'
+# JGomes Bash Universal - macOS Bash only
+case "$-" in *i*) ;; *) return 0 ;; esac
+case ${HISTSIZE:-0} in ''|*[!0-9]*) HISTSIZE=0;; esac
+case ${HISTFILESIZE:-0} in ''|*[!0-9]*) HISTFILESIZE=0;; esac
+[ "$HISTSIZE" -ge 50000 ] || HISTSIZE=50000
+[ "$HISTFILESIZE" -ge 100000 ] || HISTFILESIZE=100000
+export HISTSIZE HISTFILESIZE
+shopt -s histappend
+case ";${PROMPT_COMMAND:-};" in *'history -a'*) ;; *) PROMPT_COMMAND="${PROMPT_COMMAND:+${PROMPT_COMMAND}; }history -a";; esac
+# BSD ls uses -G (not GNU --color=auto).
+export CLICOLOR=1
+export LSCOLORS='ExGxBxDxCxEgEdxbxgxcxd'
+alias ls='ls -G'
+alias ll='ls -lhG'
+alias la='ls -lahG'
+alias l='ls -CFG'
+if [ "$(id -u)" -eq 0 ]; then _jg_uc='\[\033[1;31m\]'; else _jg_uc='\[\033[1;92m\]'; fi
+_jg_hc='\[\033[1;36m\]'; _jg_fc='\[\033[;94m\]'
+PS1='\[\e]0;\u@\h: \w\a\]'"${_jg_fc}"'┌──('"${_jg_uc}"'\u㉿'"${_jg_hc}"'\h'"${_jg_fc}"')-[\[\033[0;1m\]\w'"${_jg_fc}"']\n'"${_jg_fc}"'└─'"${_jg_uc}"'\$\[\033[0m\] '
+unset _jg_uc _jg_hc _jg_fc
+MACCONFIG
+    chmod 600 "$config"
+    [[ -f $rc ]] || : > "$rc"
+    [[ -f $profile ]] || : > "$profile"
+    mac_add_hook "$rc" "$config"
+    # Bash login reads .bash_profile; source .bashrc so the same config applies.
+    if ! grep -Fq '# >>> JGOMES MAC LOGIN >>>' "$profile"; then
+      cat >> "$profile" <<'MACLOGIN'
+# >>> JGOMES MAC LOGIN >>>
+if [ -n "${BASH_VERSION:-}" ] && [ -f "$HOME/.bashrc" ]; then . "$HOME/.bashrc"; fi
+# <<< JGOMES MAC LOGIN <<<
+MACLOGIN
+    fi
+    if command -v fastfetch >/dev/null 2>&1; then
+      say 'Fastfetch já instalado; preservado.'
+    elif command -v brew >/dev/null 2>&1; then
+      say 'Instalar Fastfetch via Homebrew (se disponível)...'
+      brew install fastfetch || say 'AVISO: falhou Homebrew Fastfetch; Bash permanece funcional.'
+    else
+      say 'AVISO: Homebrew indisponível; Fastfetch não instalado.'
+    fi
+    # Only interactive login shells; avoid repeated output in nested Bash.
+    if ! grep -Fq '# >>> JGOMES FASTFETCH LOGIN >>>' "$profile"; then
+      cat >> "$profile" <<'MACFF'
+# >>> JGOMES FASTFETCH LOGIN >>>
+case "$-" in *i*)
+  if [ -z "${JGOMES_FASTFETCH_SHOWN:-}" ] && command -v fastfetch >/dev/null 2>&1; then
+    export JGOMES_FASTFETCH_SHOWN=1
+    fastfetch
+  fi ;;
+esac
+# <<< JGOMES FASTFETCH LOGIN <<<
+MACFF
+    fi
+    say "macOS Bash v$VERSION instalado. Backup: $backup. Abrir nova sessão Bash."
+  }
+  mac_remove_hook() {
+    local file=$1 tmp
+    [[ -f $file && ! -L $file ]] || return 0
+    tmp=$(mktemp "${file}.XXXXXX")
+    awk '/^# >>> JGOMES (BASH MANAGED|MAC LOGIN|FASTFETCH LOGIN) >>>$/ {skip=1;next} /^# <<< JGOMES (BASH MANAGED|MAC LOGIN|FASTFETCH LOGIN) <<<$/ {skip=0;next} !skip {print}' "$file" > "$tmp"
+    chmod 600 "$tmp"; mv -f "$tmp" "$file"
+  }
+  mac_add_hook() {
+    local file=$1 config=$2
+    grep -Fq '# >>> JGOMES BASH MANAGED >>>' "$file" && return 0
+    cat >> "$file" <<'MACHOOK'
+# >>> JGOMES BASH MANAGED >>>
+case "$-" in *i*) [ -r "$HOME/.config/jgomes-bash/config.sh" ] && . "$HOME/.config/jgomes-bash/config.sh" ;; esac
+# <<< JGOMES BASH MANAGED <<<
+MACHOOK
+  }
+  mac_install
+  exit 0
+fi
+[[ $OS == Linux ]] || fail "Sistema não suportado: $OS"
+[[ ${EUID} -eq 0 ]] || fail 'Executar como root (sudo).' 
 [[ -f /etc/os-release ]] || fail 'Sistema sem /etc/os-release.'
 # This installer is intentionally Linux + GNU ls only.
-[[ $(uname -s) == Linux ]] || fail 'Apenas Linux; não aplicar no macOS.'
+
 . /etc/os-release
 case " ${ID:-} ${ID_LIKE:-} " in
   *debian*|*ubuntu*|*rhel*|*fedora*|*rocky*) ;;
@@ -142,6 +252,38 @@ CONFIG
   mv -f -- "$tmp" "$CONFIG"
 }
 
+# Fastfetch: use distro repositories first. No arbitrary binary downloads or
+# changes to existing PAM/SSH/getty settings. Offline/unavailable => fallback.
+setup_fastfetch() {
+  local motd_dir=/etc/update-motd.d
+  if ! command -v fastfetch >/dev/null 2>&1; then
+    if command -v apt-get >/dev/null 2>&1; then
+      if apt-cache show fastfetch >/dev/null 2>&1; then
+        DEBIAN_FRONTEND=noninteractive apt-get install -y fastfetch || say 'AVISO: apt não instalou Fastfetch.'
+      fi
+    elif command -v dnf >/dev/null 2>&1; then
+      dnf install -y fastfetch || say 'AVISO: dnf não instalou Fastfetch.'
+    fi
+  fi
+  if [[ -d $motd_dir ]]; then
+    # Preserve other MOTD scripts; create only our own script.
+    cat > "$motd_dir/05-jgomes-fastfetch" <<'MOTD'
+#!/bin/sh
+# Called by the existing PAM MOTD mechanism; do not modify PAM/SSH.
+# pam_motd may capture stdout through a pipe (not a TTY).
+if command -v fastfetch >/dev/null 2>&1; then
+  fastfetch
+else
+  printf '\nHost: %s | Kernel: %s\n' "$(hostname)" "$(uname -r)"
+fi
+MOTD
+    chmod 755 "$motd_dir/05-jgomes-fastfetch"
+    say 'MOTD gerido criado (execução depende da configuração PAM existente).'
+  else
+    say 'MOTD dinâmico indisponível; sem alterações a PAM, SSH ou getty.'
+  fi
+}
+
 case "$ACTION" in
   --install)
     mkdir -p -m 0700 "$STATE"
@@ -167,6 +309,7 @@ case "$ACTION" in
       say 'AVISO: configuração manual antiga /etc/profile.d/99-shell-custom.sh detetada; não será removida automaticamente.'
     fi
     write_config
+    setup_fastfetch
     # Global hook handles interactive Bash, including accounts without ~/.bashrc.
     # Per-user hook at EOF restores our settings after distribution defaults.
     [[ -z $GLOBAL_RC ]] || append_hook "$GLOBAL_RC"
@@ -182,13 +325,14 @@ case "$ACTION" in
     mapfile -t rcs < <(user_rcs | sort -u)
     for rc in "${rcs[@]}"; do remove_hook "$rc"; done
     [[ -z $GLOBAL_RC ]] || remove_hook "$GLOBAL_RC"
-    rm -f -- "$CONFIG"
+    rm -f -- "$CONFIG" /etc/update-motd.d/05-jgomes-fastfetch
     say 'Blocos geridos removidos dos .bashrc existentes e configuração global apagada.'
     say "Backups de configuração mantidos em $STATE. Históricos intactos."
     ;;
   --status)
     say "Sistema: ${ID} ${VERSION_ID:-}"
     [[ -f $CONFIG ]] && say "Configuração: $CONFIG (instalada)" || say 'Configuração: ausente'
+    command -v fastfetch >/dev/null 2>&1 && say "Fastfetch: $(command -v fastfetch)" || say "Fastfetch: indisponível (fallback MOTD)"
     mapfile -t rcs < <(user_rcs | sort -u)
     [[ -z $GLOBAL_RC ]] || rcs+=("$GLOBAL_RC")
     for rc in "${rcs[@]}"; do
