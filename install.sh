@@ -282,7 +282,9 @@ existing_fastfetch_motd() {
 }
 
 setup_fastfetch() {
-  local motd_dir=/etc/update-motd.d existing managed="$motd_dir/05-jgomes-fastfetch"
+  local motd_dir=/etc/update-motd.d
+  local existing
+  local managed="${motd_dir}/05-jgomes-fastfetch"
   # Detect before installing: avoid touching an existing custom MOTD.
   existing=$(existing_fastfetch_motd || true)
   if [[ -n $existing ]]; then
