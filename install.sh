@@ -4,7 +4,7 @@
 set -Eeuo pipefail
 umask 077
 
-VERSION='1.4.1'
+VERSION='1.4.2'
 CONFIG='/etc/profile.d/99-jgomes-bash.sh'
 STATE='/var/lib/jgomes-bash'
 GLOBAL_RC=''

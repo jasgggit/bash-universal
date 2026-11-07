@@ -1,4 +1,4 @@
-# Bash Universal v1.4.1 — Bash + Fastfetch
+# Bash Universal v1.4.2 — Bash + Fastfetch
 
 ## Sistemas
 - Linux: Ubuntu 20.04/22.04/24.04, Debian e Rocky Linux 9; executar como root.
@@ -51,8 +51,12 @@ A remoção retira os hooks geridos e a configuração Bash/MOTD gerida. **Não 
 - No Linux, scripts preexistentes de MOTD podem apresentar informação adicional ou duplicada; o instalador não os elimina automaticamente.
 - **Estado:** sintaxe verificada; testes funcionais reais em macOS, Ubuntu, Debian e Rocky ainda pendentes.
 
-## v1.4.1 — Evitar Fastfetch duplicado
+## v1.4.2 — Evitar Fastfetch duplicado
 
 Antes de criar o MOTD, deteta scripts executáveis existentes em `/etc/update-motd.d/` que invoquem `fastfetch`. Preserva scripts e configurações personalizados (por exemplo `/etc/update-motd.d/00-fastfetch` e `/etc/fastfetch/server.json`). Se existir integração externa, remove apenas o script reconhecido como gerido pela v1.4.0, se presente. Não remove integrações de terceiros na desinstalação. No macOS Bash verifica integrações Fastfetch nos ficheiros de login antes de acrescentar uma nova.
 
 **Limitações:** a deteção é estática; invocações indiretas por scripts auxiliares podem não ser detetadas. A instalação e execução efetivas do Fastfetch dependem dos repositórios e do mecanismo de login do sistema. Testar primeiro num servidor piloto.
+
+## v1.4.2
+
+Corrigida a inicialização de `motd_dir` sob `set -u` na função `setup_fastfetch`. Não altera as regras de deteção de integrações Fastfetch existentes.
