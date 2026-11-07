@@ -4,9 +4,12 @@
 set -Eeuo pipefail
 umask 077
 
-VERSION='1.2.0'
+VERSION='1.3.0'
 CONFIG='/etc/profile.d/99-jgomes-bash.sh'
 STATE='/var/lib/jgomes-bash'
+GLOBAL_RC=''
+[[ -f /etc/bash.bashrc ]] && GLOBAL_RC=/etc/bash.bashrc
+[[ -z $GLOBAL_RC && -f /etc/bashrc ]] && GLOBAL_RC=/etc/bashrc
 BEGIN='# >>> JGOMES BASH MANAGED >>>'
 END='# <<< JGOMES BASH MANAGED <<<'
 ACTION="${1:---install}"
@@ -34,6 +37,8 @@ user_rcs() {
     [[ -d $home && ! -L $home ]] || continue
     [[ -f $home/.bashrc && ! -L $home/.bashrc ]] && printf '%s\n' "$home/.bashrc"
   done < /etc/passwd
+  # New accounts inherit this hook via /etc/skel.
+  [[ -f /etc/skel/.bashrc && ! -L /etc/skel/.bashrc ]] && printf '%s\n' /etc/skel/.bashrc
 }
 
 hook() {
@@ -120,11 +125,17 @@ alias ll='ls -lh --color=auto'
 alias la='ls -lah --color=auto'
 alias l='ls -CF --color=auto'
 
-# Kali-style prompt matching the AISYS PS1 (Ubuntu/Kali palette).
-# Preserve the title, optional chroot/virtualenv, and root/user symbol.
-# ANSI 94 = bright blue (rendered lilac by the terminal palette).
-# Root user/host/symbol = bold red; path = terminal default bold.
-PS1='\[\e]0;\u@\h: \w\a\]\[\033[;94m\]┌──${debian_chroot:+($debian_chroot)──}${VIRTUAL_ENV:+(\[\033[0;1m\]$(basename "$VIRTUAL_ENV")\[\033[;94m\])}(\[\033[1;31m\]\u㉿\h\[\033[;94m\])-[\[\033[0;1m\]\w\[\033[;94m\]]\n\[\033[;94m\]└─\[\033[1;31m\]\$\[\033[0m\] '
+# Kali-style prompt: root red, non-root light green; hostname cyan.
+# Preserve the AISYS frame, terminal title, chroot and Python virtualenv.
+if (( EUID == 0 )); then
+    _jg_user_color='\[\033[1;31m\]'
+else
+    _jg_user_color='\[\033[1;92m\]'
+fi
+_jg_host_color='\[\033[1;36m\]'
+_jg_frame_color='\[\033[;94m\]'
+PS1='\[\e]0;\u@\h: \w\a\]'"${_jg_frame_color}"'┌──${debian_chroot:+($debian_chroot)──}${VIRTUAL_ENV:+(\[\033[0;1m\]$(basename "$VIRTUAL_ENV")\[\033[;94m\])}('"${_jg_user_color}"'\u㉿'"${_jg_host_color}"'\h'"${_jg_frame_color}"')-[\[\033[0;1m\]\w'"${_jg_frame_color}"']\n'"${_jg_frame_color}"'└─'"${_jg_user_color}"'\$\[\033[0m\] '
+unset _jg_user_color _jg_host_color _jg_frame_color
 
 CONFIG
   chmod 0644 "$tmp"
@@ -148,7 +159,17 @@ case "$ACTION" in
       fi
     done
     [[ ! -e $CONFIG ]] || cp -a -- "$CONFIG" "$backup/previous-config.sh"
+    if [[ -n $GLOBAL_RC ]]; then
+      mkdir -p "$backup$(dirname "$GLOBAL_RC")"
+      cp -a -- "$GLOBAL_RC" "$backup$GLOBAL_RC"
+    fi
+    if [[ -f /etc/profile.d/99-shell-custom.sh ]]; then
+      say 'AVISO: configuração manual antiga /etc/profile.d/99-shell-custom.sh detetada; não será removida automaticamente.'
+    fi
     write_config
+    # Global hook handles interactive Bash, including accounts without ~/.bashrc.
+    # Per-user hook at EOF restores our settings after distribution defaults.
+    [[ -z $GLOBAL_RC ]] || append_hook "$GLOBAL_RC"
     for rc in "${rcs[@]}"; do append_hook "$rc"; done
     say "Instalado JGomes Bash v$VERSION em ${ID} ${VERSION_ID:-}."
     say "Utilizadores Bash atualizados: ${#rcs[@]}"
@@ -160,6 +181,7 @@ case "$ACTION" in
   --uninstall)
     mapfile -t rcs < <(user_rcs | sort -u)
     for rc in "${rcs[@]}"; do remove_hook "$rc"; done
+    [[ -z $GLOBAL_RC ]] || remove_hook "$GLOBAL_RC"
     rm -f -- "$CONFIG"
     say 'Blocos geridos removidos dos .bashrc existentes e configuração global apagada.'
     say "Backups de configuração mantidos em $STATE. Históricos intactos."
@@ -168,6 +190,7 @@ case "$ACTION" in
     say "Sistema: ${ID} ${VERSION_ID:-}"
     [[ -f $CONFIG ]] && say "Configuração: $CONFIG (instalada)" || say 'Configuração: ausente'
     mapfile -t rcs < <(user_rcs | sort -u)
+    [[ -z $GLOBAL_RC ]] || rcs+=("$GLOBAL_RC")
     for rc in "${rcs[@]}"; do
       if grep -Fqx "$BEGIN" "$rc"; then say "HOOK OK: $rc"; else say "HOOK AUSENTE: $rc"; fi
     done

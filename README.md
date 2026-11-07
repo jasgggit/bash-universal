@@ -1,42 +1,54 @@
-# JGomes Bash Universal
+# JGomes Bash Universal v1.3.0
 
-Instalador para Bash interativo em Ubuntu, Debian e Rocky Linux. Mantém os prompts personalizados (incluindo Kali), preserva os históricos existentes, define limites mínimos de 50 000/100 000 comandos, `histappend`, gravação incremental com `history -a`, cores ciano para diretórios e aliases `ls`, `ll`, `la`, `l`.
+Configuração de Bash interativo para Debian, Ubuntu e Rocky Linux: prompt Kali de duas linhas, root vermelho, utilizadores normais verde-claro, hostname ciano, diretórios ciano, aliases `ls`, `ll`, `la`, `l`, e histórico com mínimos de 50 000/100 000 comandos.
 
-## Instalação a partir do GitHub
+## Instalação
 
-Publicar `install.sh` na raiz de um repositório público, por exemplo `jasgggit/bash-universal` (nome ilustrativo; confirmar antes de executar).
-
-```bash
-curl -fsSLo /tmp/jgomes-bash-install.sh https://raw.githubusercontent.com/UTILIZADOR/REPOSITORIO/main/install.sh
-less /tmp/jgomes-bash-install.sh
-sudo bash /tmp/jgomes-bash-install.sh --install
-```
-
-Depois de verificar o conteúdo e o endereço, também é possível executar diretamente:
+Como root, após rever o código publicado:
 
 ```bash
-sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/UTILIZADOR/REPOSITORIO/main/install.sh)"
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/jasgggit/bash-universal/main/install.sh)"
 ```
 
-## Operações
+Para testar antes da instalação, descarregar e inspecionar `install.sh`, executar `bash -n install.sh` e depois `sudo bash install.sh`.
+
+## Como funciona
+
+- Configuração em `/etc/profile.d/99-jgomes-bash.sh`.
+- Integração no `/etc/bash.bashrc` (Debian/Ubuntu) ou `/etc/bashrc` (Rocky), e no final dos `.bashrc` de utilizadores Bash existentes e de `/etc/skel/.bashrc` para novas contas.
+- Os `.bashrc` dos utilizadores continuam a ser executados; a configuração gerida é aplicada no fim.
+- Reinstalações não duplicam blocos identificados pelos marcadores `JGOMES BASH MANAGED`.
+- Faz backups dos `.bashrc` alterados e dos `.bash_history` existentes em `/var/lib/jgomes-bash/backup-*` (sem modificar os históricos originais).
+- Não reduz limites superiores já existentes na sessão, nem apaga ou reescreve históricos.
+
+## Validação
+
+Abrir **nova sessão SSH** e executar:
 
 ```bash
-sudo bash install.sh --status
-sudo bash install.sh --uninstall
+echo "$HISTSIZE $HISTFILESIZE"
+shopt histappend
+declare -p PROMPT_COMMAND
+alias ll
+ll /opt
 ```
 
-A instalação é idempotente. São guardadas cópias dos `.bashrc` e `.bash_history` existentes em `/var/lib/jgomes-bash/backup-*`. O script não limpa nem reescreve os históricos originais. A desinstalação remove apenas os blocos geridos e o ficheiro de configuração, não restaura automaticamente outras personalizações anteriores.
+Testar também `su - utilizador` ou `sudo -i` quando aplicável.
 
-**Limitações:** aplica-se a utilizadores com Bash como shell de login e `.bashrc` existente (root ou UID >= 1000); novos utilizadores precisam de voltar a executar o instalador. Não modifica o Bash do macOS. Uma definição posterior de `PROMPT_COMMAND` ou `LS_COLORS`, ou hooks de prompt autorreferenciais, podem sobrepor esta configuração; verificar sempre numa nova sessão. Sessões SSH já abertas podem manter valores antigos e devem ser encerradas cuidadosamente. Os backups podem ocupar espaço se os históricos forem grandes.
+## Estado e remoção
 
+```bash
+bash install.sh --status
+bash install.sh --uninstall
+```
 
-## v1.2.0 — Prompt estilo Kali
+A remoção retira apenas os blocos geridos e o ficheiro central; não restaura outras personalizações preexistentes e não altera históricos.
 
-O instalador define um prompt Bash de duas linhas inspirado no Kali, para root e utilizadores normais, sem substituir `PROMPT_COMMAND` nem limpar históricos. A instalação sobrepõe a aparência do prompt existente nas novas sessões interativas abrangidas. A reversão remove a configuração gerida; os ficheiros `.bashrc` anteriores são guardados em `/var/lib/jgomes-bash/`.
+## Limitações e cuidados
 
-**Nota:** se já existir outro hook de configuração adicionado manualmente (por exemplo `/etc/profile.d/99-shell-custom.sh`), removê-lo apenas depois de validar que não há conflitos. O instalador não apaga personalizações pré-existentes.
-
-
-## v1.2.0
-
-Prompt alinhado com o PS1 do AISYS: estrutura em duas linhas, ANSI 94 para moldura, vermelho para utilizador/host e símbolo root, caminho a negrito na cor normal do terminal. As cores efetivas dependem da paleta ANSI do terminal. Não modifica o histórico existente.
+- Só Bash interativo, não Zsh nem macOS.
+- Utilizadores existentes sem `.bashrc` ou com inicialização especial podem exigir ajuste manual.
+- O Bash não garante execução de um hook global *depois* de todos os ficheiros pessoais sem acrescentar um hook ao `.bashrc` individual.
+- Instalações antigas personalizadas, como o AISYS, podem ter `/etc/profile.d/99-shell-custom.sh` e linhas anteriores em `/etc/bash.bashrc`; o instalador **avisa mas não apaga** essas alterações. Rever e consolidar separadamente depois do teste.
+- Sessões abertas podem manter limites antigos e truncar o histórico ao sair; efetuar migração em janela controlada.
+- Executar scripts remotos via `curl | bash` implica confiar no conteúdo atual do branch. Para ambientes críticos, fixar uma tag/commit e rever o script.
