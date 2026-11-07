@@ -4,7 +4,7 @@
 set -Eeuo pipefail
 umask 077
 
-VERSION='1.4.2'
+VERSION='1.4.3'
 CONFIG='/etc/profile.d/99-jgomes-bash.sh'
 STATE='/var/lib/jgomes-bash'
 GLOBAL_RC=''
@@ -281,30 +281,133 @@ existing_fastfetch_motd() {
   return 1
 }
 
+# Official Fastfetch release fallback. The GitHub Releases API provides the
+# current release, architecture-specific assets and (when published) SHA-256.
+# No third-party mirrors, install scripts or unsigned repositories are used.
+install_fastfetch_official() (
+  set -Eeuo pipefail
+  local kind arch api_file asset_info name url digest tmp pkg_path actual
+  local release_api='https://api.github.com/repos/fastfetch-cli/fastfetch/releases/latest'
+  if command -v apt-get >/dev/null 2>&1 && command -v dpkg >/dev/null 2>&1; then
+    kind=deb
+    arch=$(dpkg --print-architecture)
+  elif command -v dnf >/dev/null 2>&1 && command -v rpm >/dev/null 2>&1; then
+    kind=rpm
+    arch=$(rpm --eval '%{_arch}')
+  else
+    say '[AVISO] Sem gestor de pacotes suportado para o fallback oficial.'
+    exit 1
+  fi
+  case "$arch" in
+    amd64|x86_64) arch=amd64 ;;
+    arm64|aarch64) arch=arm64 ;;
+    *) say "[AVISO] Arquitetura sem pacote Fastfetch validado: $arch"; exit 1 ;;
+  esac
+  for cmd in curl python3 sha256sum; do
+    command -v "$cmd" >/dev/null 2>&1 || { say "[AVISO] $cmd indisponível; download oficial ignorado."; exit 1; }
+  done
+  tmp=$(mktemp -d /tmp/jgomes-fastfetch.XXXXXXXX)
+  trap 'rm -rf -- "$tmp"' EXIT
+  api_file="$tmp/release.json"
+  if ! curl --fail --silent --show-error --location --retry 2 --connect-timeout 10 --max-time 40 \
+      -H 'Accept: application/vnd.github+json' "$release_api" -o "$api_file"; then
+    say '[AVISO] Não foi possível consultar a release oficial do Fastfetch.'
+    exit 1
+  fi
+  # Strictly match a Linux package, target architecture and expected format.
+  # Avoid portable archives, musl builds and packages for other architectures.
+  asset_info=$(python3 - "$api_file" "$kind" "$arch" <<'PYASSET'
+import json, re, sys
+path, kind, arch = sys.argv[1:]
+try:
+    with open(path, encoding='utf-8') as f:
+        data = json.load(f)
+    if data.get('draft') or data.get('prerelease'):
+        raise ValueError('release não estável')
+    names = {'amd64': ('amd64', 'x86_64'), 'arm64': ('arm64', 'aarch64')}[arch]
+    assets = []
+    for a in data.get('assets', []):
+        name = a.get('name', '')
+        if not name.startswith('fastfetch-linux-') or not name.endswith('.' + kind):
+            continue
+        if 'musl' in name.lower():
+            continue
+        if not any(re.search(r'(?<![a-z0-9])' + re.escape(n) + r'(?![a-z0-9])', name.lower()) for n in names):
+            continue
+        url = a.get('browser_download_url', '')
+        if not url.startswith('https://github.com/fastfetch-cli/fastfetch/releases/download/'):
+            continue
+        digest = a.get('digest') or ''
+        if not re.fullmatch(r'sha256:[a-fA-F0-9]{64}', digest):
+            continue  # Fail closed: no verified hash, no package installation.
+        assets.append((name, url, digest[7:].lower()))
+    if len(assets) != 1:
+        raise ValueError('pacote único com SHA-256 não encontrado')
+    print('\t'.join(assets[0]))
+except (ValueError, KeyError, OSError, json.JSONDecodeError) as e:
+    print(f'[AVISO] Release oficial sem pacote verificável: {e}', file=sys.stderr)
+    sys.exit(1)
+PYASSET
+  ) || exit 1
+  IFS=$'\t' read -r name url digest <<< "$asset_info"
+  pkg_path="$tmp/$name"
+  say "[INFO] Download oficial Fastfetch: $name"
+  if ! curl --fail --silent --show-error --location --retry 2 --connect-timeout 10 --max-time 180 \
+      "$url" -o "$pkg_path"; then
+    say '[AVISO] Falha no download do pacote oficial.'
+    exit 1
+  fi
+  actual=$(sha256sum "$pkg_path" | awk '{print $1}')
+  if [[ $actual != "$digest" ]]; then
+    say '[AVISO] SHA-256 inválido; pacote não instalado.'
+    exit 1
+  fi
+  say '[OK] SHA-256 do pacote confirmado com a API oficial do GitHub.'
+  if [[ $kind == deb ]]; then
+    # Validate package metadata, not just its filename.
+    local pkg_arch
+    pkg_arch=$(dpkg-deb -f "$pkg_path" Architecture 2>/dev/null) || exit 1
+    case "$arch:$pkg_arch" in amd64:amd64|arm64:arm64) ;; *) say '[AVISO] Arquitetura interna do DEB incompatível.'; exit 1 ;; esac
+    DEBIAN_FRONTEND=noninteractive apt-get install -y "$pkg_path" || exit 1
+  else
+    local pkg_arch
+    pkg_arch=$(rpm -qp --qf '%{ARCH}' "$pkg_path" 2>/dev/null) || exit 1
+    case "$arch:$pkg_arch" in amd64:x86_64|arm64:aarch64) ;; *) say '[AVISO] Arquitetura interna do RPM incompatível.'; exit 1 ;; esac
+    dnf install -y "$pkg_path" || exit 1
+  fi
+  command -v fastfetch >/dev/null 2>&1 || exit 1
+  say '[OK] Fastfetch instalado a partir da release oficial verificada.'
+)
+
 setup_fastfetch() {
   local motd_dir=/etc/update-motd.d
   local existing
   local managed="${motd_dir}/05-jgomes-fastfetch"
-  # Detect before installing: avoid touching an existing custom MOTD.
   existing=$(existing_fastfetch_motd || true)
   if [[ -n $existing ]]; then
     say "[INFO] Integração Fastfetch existente: $existing"
     if [[ -f $managed ]] && grep -Fq 'Called by the existing PAM MOTD mechanism' "$managed"; then
       rm -f -- "$managed"
-      say '[OK] Integração redundante da v1.4.0 removida.'
+      say '[OK] Integração redundante gerida removida.'
     fi
     say '[SKIP] Integração existente preservada; não será criada outra.'
-    return 0
+    # An existing integration may reference Fastfetch even when not installed.
   fi
   if ! command -v fastfetch >/dev/null 2>&1; then
-    if command -v apt-get >/dev/null 2>&1; then
+    say '[INFO] Fastfetch ausente; a verificar repositórios configurados.'
+    if command -v apt-get >/dev/null 2>&1 && command -v apt-cache >/dev/null 2>&1; then
       if apt-cache show fastfetch >/dev/null 2>&1; then
-        DEBIAN_FRONTEND=noninteractive apt-get install -y fastfetch || say 'AVISO: apt não instalou Fastfetch.'
+        DEBIAN_FRONTEND=noninteractive apt-get install -y fastfetch || say '[AVISO] APT não instalou Fastfetch.'
       fi
     elif command -v dnf >/dev/null 2>&1; then
-      dnf install -y fastfetch || say 'AVISO: dnf não instalou Fastfetch.'
+      dnf install -y fastfetch || say '[AVISO] DNF não instalou Fastfetch.'
     fi
   fi
+  if ! command -v fastfetch >/dev/null 2>&1; then
+    say '[INFO] Fastfetch indisponível nos repositórios; a tentar release oficial do GitHub.'
+    install_fastfetch_official || say '[AVISO] Fastfetch oficial não instalado; fallback MOTD mantido.'
+  fi
+  [[ -z $existing ]] || return 0
   if [[ -d $motd_dir ]]; then
     if [[ -e $managed ]] && ! grep -Fq 'Called by the existing PAM MOTD mechanism' "$managed"; then
       say "[SKIP] $managed existe mas não é reconhecido como gerido; preservado."
