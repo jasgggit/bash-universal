@@ -4,7 +4,7 @@
 set -Eeuo pipefail
 umask 077
 
-VERSION='1.0.0'
+VERSION='1.1.0'
 CONFIG='/etc/profile.d/99-jgomes-bash.sh'
 STATE='/var/lib/jgomes-bash'
 BEGIN='# >>> JGOMES BASH MANAGED >>>'
@@ -119,6 +119,20 @@ alias ls='ls --color=auto'
 alias ll='ls -lh --color=auto'
 alias la='ls -lah --color=auto'
 alias l='ls -CF --color=auto'
+
+# Kali-inspired two-line prompt, independent of PROMPT_COMMAND.
+# Keep history flushing hooks intact; no terminal-specific palette required.
+# ┌──(user㊟host)-[directory]
+# └─$ command
+if (( EUID == 0 )); then
+    _jg_prompt_color='\[\e[1;31m\]'
+    _jg_prompt_char='#'
+else
+    _jg_prompt_color='\[\e[1;32m\]'
+    _jg_prompt_char='$'
+fi
+PS1='\[\e[1;34m\]┌──('${_jg_prompt_color}'\u\[\e[0m\]㉿\h\[\e[1;34m\])-[\[\e[0;36m\]\w\[\e[1;34m\]]\n└─\[\e[0m\]'"${_jg_prompt_char}"' '
+unset _jg_prompt_color _jg_prompt_char
 CONFIG
   chmod 0644 "$tmp"
   mv -f -- "$tmp" "$CONFIG"
