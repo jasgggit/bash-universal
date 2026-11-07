@@ -1,4 +1,4 @@
-# Bash Universal v1.4.3 — Bash + Fastfetch
+# Bash Universal v1.4.4 — Bash + Fastfetch
 
 ## Sistemas
 - Linux: Ubuntu 20.04/22.04/24.04, Debian e Rocky Linux 9; executar como root.
@@ -51,16 +51,31 @@ A remoção retira os hooks geridos e a configuração Bash/MOTD gerida. **Não 
 - No Linux, scripts preexistentes de MOTD podem apresentar informação adicional ou duplicada; o instalador não os elimina automaticamente.
 - **Estado:** sintaxe verificada; testes funcionais reais em macOS, Ubuntu, Debian e Rocky ainda pendentes.
 
-## v1.4.3 — Evitar Fastfetch duplicado
+## v1.4.4 — Evitar Fastfetch duplicado
 
 Antes de criar o MOTD, deteta scripts executáveis existentes em `/etc/update-motd.d/` que invoquem `fastfetch`. Preserva scripts e configurações personalizados (por exemplo `/etc/update-motd.d/00-fastfetch` e `/etc/fastfetch/server.json`). Se existir integração externa, remove apenas o script reconhecido como gerido pela v1.4.0, se presente. Não remove integrações de terceiros na desinstalação. No macOS Bash verifica integrações Fastfetch nos ficheiros de login antes de acrescentar uma nova.
 
 **Limitações:** a deteção é estática; invocações indiretas por scripts auxiliares podem não ser detetadas. A instalação e execução efetivas do Fastfetch dependem dos repositórios e do mecanismo de login do sistema. Testar primeiro num servidor piloto.
 
-## v1.4.3
+## v1.4.4
 
 Corrigida a inicialização de `motd_dir` sob `set -u` na função `setup_fastfetch`. Não altera as regras de deteção de integrações Fastfetch existentes.
 
-## v1.4.3 — Fallback oficial GitHub
+## v1.4.4 — Fallback oficial GitHub
 
 A instalação Linux tenta primeiro os repositórios e, se necessário, obtém a release estável atual de `fastfetch-cli/fastfetch` via API GitHub. Só aceita pacote de arquitetura compatível e hash SHA-256 fornecido pela API, validando igualmente os metadados do pacote antes da instalação. O macOS mantém a instalação via Homebrew e a proteção de contas Zsh.
+
+## Correção v1.4.4 — seleção dos assets oficiais
+
+A release Fastfetch inclui frequentemente pacotes `*-polyfilled` juntamente com os
+pacotes padrão. A versão 1.4.3 considerava ambas as variantes e rejeitava a
+release por ambiguidade, mesmo quando o campo `digest` continha SHA-256 válido.
+
+A v1.4.4 seleciona **exatamente** o asset esperado (`fastfetch-linux-amd64.deb`,
+`fastfetch-linux-aarch64.deb` ou os correspondentes `.rpm`), valida o campo
+`digest` da API GitHub e compara o SHA-256 após download. Não instala pacotes
+sem digest verificável. As variantes `polyfilled` não são escolhidas
+automaticamente. Mantém as configurações Fastfetch e MOTD pré-existentes.
+
+**Testes:** sintaxe e seleção de assets verificadas localmente; instalação
+real em Ubuntu, Rocky Linux e macOS por validar.

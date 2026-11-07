@@ -4,7 +4,7 @@
 set -Eeuo pipefail
 umask 077
 
-VERSION='1.4.3'
+VERSION='1.4.4'
 CONFIG='/etc/profile.d/99-jgomes-bash.sh'
 STATE='/var/lib/jgomes-bash'
 GLOBAL_RC=''
@@ -324,25 +324,23 @@ try:
         data = json.load(f)
     if data.get('draft') or data.get('prerelease'):
         raise ValueError('release não estável')
-    names = {'amd64': ('amd64', 'x86_64'), 'arm64': ('arm64', 'aarch64')}[arch]
+    # Match exact official release asset names. A release may contain both
+    # standard and "polyfilled" variants: never treat them as ambiguous.
+    official_arch = {'amd64': 'amd64', 'arm64': 'aarch64'}[arch]
+    expected = f'fastfetch-linux-{official_arch}.{kind}'
     assets = []
     for a in data.get('assets', []):
-        name = a.get('name', '')
-        if not name.startswith('fastfetch-linux-') or not name.endswith('.' + kind):
-            continue
-        if 'musl' in name.lower():
-            continue
-        if not any(re.search(r'(?<![a-z0-9])' + re.escape(n) + r'(?![a-z0-9])', name.lower()) for n in names):
+        if a.get('name') != expected:
             continue
         url = a.get('browser_download_url', '')
         if not url.startswith('https://github.com/fastfetch-cli/fastfetch/releases/download/'):
             continue
         digest = a.get('digest') or ''
         if not re.fullmatch(r'sha256:[a-fA-F0-9]{64}', digest):
-            continue  # Fail closed: no verified hash, no package installation.
-        assets.append((name, url, digest[7:].lower()))
+            continue
+        assets.append((expected, url, digest[7:].lower()))
     if len(assets) != 1:
-        raise ValueError('pacote único com SHA-256 não encontrado')
+        raise ValueError(f'asset {expected} ausente, duplicado ou sem SHA-256 na API')
     print('\t'.join(assets[0]))
 except (ValueError, KeyError, OSError, json.JSONDecodeError) as e:
     print(f'[AVISO] Release oficial sem pacote verificável: {e}', file=sys.stderr)
