@@ -4,7 +4,7 @@
 set -Eeuo pipefail
 umask 077
 
-VERSION='1.1.0'
+VERSION='1.2.0'
 CONFIG='/etc/profile.d/99-jgomes-bash.sh'
 STATE='/var/lib/jgomes-bash'
 BEGIN='# >>> JGOMES BASH MANAGED >>>'
@@ -120,19 +120,12 @@ alias ll='ls -lh --color=auto'
 alias la='ls -lah --color=auto'
 alias l='ls -CF --color=auto'
 
-# Kali-inspired two-line prompt, independent of PROMPT_COMMAND.
-# Keep history flushing hooks intact; no terminal-specific palette required.
-# ┌──(user㊟host)-[directory]
-# └─$ command
-if (( EUID == 0 )); then
-    _jg_prompt_color='\[\e[1;31m\]'
-    _jg_prompt_char='#'
-else
-    _jg_prompt_color='\[\e[1;32m\]'
-    _jg_prompt_char='$'
-fi
-PS1='\[\e[1;34m\]┌──('${_jg_prompt_color}'\u\[\e[0m\]㉿\h\[\e[1;34m\])-[\[\e[0;36m\]\w\[\e[1;34m\]]\n└─\[\e[0m\]'"${_jg_prompt_char}"' '
-unset _jg_prompt_color _jg_prompt_char
+# Kali-style prompt matching the AISYS PS1 (Ubuntu/Kali palette).
+# Preserve the title, optional chroot/virtualenv, and root/user symbol.
+# ANSI 94 = bright blue (rendered lilac by the terminal palette).
+# Root user/host/symbol = bold red; path = terminal default bold.
+PS1='\[\e]0;\u@\h: \w\a\]\[\033[;94m\]┌──${debian_chroot:+($debian_chroot)──}${VIRTUAL_ENV:+(\[\033[0;1m\]$(basename "$VIRTUAL_ENV")\[\033[;94m\])}(\[\033[1;31m\]\u㉿\h\[\033[;94m\])-[\[\033[0;1m\]\w\[\033[;94m\]]\n\[\033[;94m\]└─\[\033[1;31m\]\$\[\033[0m\] '
+
 CONFIG
   chmod 0644 "$tmp"
   mv -f -- "$tmp" "$CONFIG"
