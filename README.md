@@ -1,4 +1,4 @@
-# Bash Universal v1.4.4 — Bash + Fastfetch
+# Bash Universal v1.4.5 — Bash + Fastfetch
 
 ## Sistemas
 - Linux: Ubuntu 20.04/22.04/24.04, Debian e Rocky Linux 9; executar como root.
@@ -79,3 +79,7 @@ automaticamente. Mantém as configurações Fastfetch e MOTD pré-existentes.
 
 **Testes:** sintaxe e seleção de assets verificadas localmente; instalação
 real em Ubuntu, Rocky Linux e macOS por validar.
+
+## Alteração v1.4.5 — alias `ll`
+
+O alias `ll` passa a apresentar também ficheiros ocultos: Linux `ls -lah --color=auto`; macOS Bash `ls -lahG`. Mantêm-se os restantes aliases e as funcionalidades da v1.4.4. A alteração entra em vigor numa nova sessão Bash após reinstalar/atualizar.

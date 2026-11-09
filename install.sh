@@ -4,7 +4,7 @@
 set -Eeuo pipefail
 umask 077
 
-VERSION='1.4.4'
+VERSION='1.4.5'
 CONFIG='/etc/profile.d/99-jgomes-bash.sh'
 STATE='/var/lib/jgomes-bash'
 GLOBAL_RC=''
@@ -63,7 +63,7 @@ case ";${PROMPT_COMMAND:-};" in *'history -a'*) ;; *) PROMPT_COMMAND="${PROMPT_C
 export CLICOLOR=1
 export LSCOLORS='ExGxBxDxCxEgEdxbxgxcxd'
 alias ls='ls -G'
-alias ll='ls -lhG'
+alias ll='ls -lahG'
 alias la='ls -lahG'
 alias l='ls -CFG'
 if [ "$(id -u)" -eq 0 ]; then _jg_uc='\[\033[1;31m\]'; else _jg_uc='\[\033[1;92m\]'; fi
@@ -242,7 +242,7 @@ esac
 export LS_COLORS
 
 alias ls='ls --color=auto'
-alias ll='ls -lh --color=auto'
+alias ll='ls -lah --color=auto'
 alias la='ls -lah --color=auto'
 alias l='ls -CF --color=auto'
 
